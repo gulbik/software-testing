@@ -22,6 +22,10 @@ permissions:
 
 env:
   NODE_VERSION: 22
+  # The application under test runs inside the job (see the test job), pinned to this
+  # upstream commit so every run - and every fork - tests exactly the same version.
+  TOOLSHOP_REPO: testsmith-io/practice-software-testing
+  TOOLSHOP_REF: ae7caecb811dd8952c09d997e69be7cb946ecd44
 
 jobs:
   typecheck:
@@ -41,7 +45,12 @@ jobs:
   test:
     name: Tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      # The public site sits behind a Cloudflare bot check that blocks GitHub-hosted runners,
+      # so CI tests a private copy of the same open-source app, started in Docker below.
+      BASE_URL: http://localhost:4200
+      API_URL: http://localhost:8091
     strategy:
       # Let every shard finish, so one red shard does not hide results from the others.
       fail-fast: false
@@ -50,6 +59,19 @@ jobs:
         shardTotal: ${{ fromJSON(inputs.shards == '1' && '[1]' || '[4]') }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Check out the Toolshop application
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.TOOLSHOP_REPO }}
+          ref: ${{ env.TOOLSHOP_REF }}
+          path: toolshop
+          persist-credentials: false
+
+      # Starts in the background; Angular and PHP keep starting while we install below.
+      - name: Start Toolshop (Docker)
+        working-directory: toolshop
+        run: ../scripts/toolshop-start.sh
 
       - uses: actions/setup-node@v7
         with:
@@ -78,8 +100,17 @@ jobs:
         if: steps.browser-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
+      - name: Wait for Toolshop (seed database, API and UI up)
+        working-directory: toolshop
+        run: ../scripts/toolshop-wait.sh
+
       - name: Run Playwright tests
         run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+
+      - name: Save application logs
+        if: ${{ failure() }}
+        working-directory: toolshop
+        run: SPRINT=sprint5 docker compose -f docker-compose.yml logs --no-color > ../toolshop-docker.log 2>&1 || true
 
       # Raw material for the merged report below.
       - name: Upload blob report
@@ -101,6 +132,7 @@ jobs:
             test-results/
             reports/
             playwright-report/
+            toolshop-docker.log
           retention-days: 14
 
   report:
