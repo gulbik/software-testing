@@ -171,3 +171,42 @@ This is an application business rule, not a flaky test. I therefore excluded the
 ### `page.waitForResponse` in `AddressForm`
 
 This is used to wait for the actual postcode lookup response rather than a fixed delay. The lookup changes the street, city and state fields, so the test waits for the real response and then uses web-first assertions on the fields.
+
+---
+
+# SIS 3: Review of the AI-generated CI pipeline
+
+## What the AI produced
+
+- `.github/workflows/playwright.yml`: typecheck job, 4 test shards, a merge-reports job, and a `CI gate` job to use as the single required check.
+- CI-specific settings in `playwright.config.ts` (`forbidOnly`, 1 retry, `github` + `blob` + `junit` + `html` reporters) and `merge.config.ts` for the merged report.
+- `scripts/ci-summary.mjs`: writes failed and flaky tests, with `file:line` and the error, to the GitHub job summary.
+- `scripts/toolshop-start.sh` / `toolshop-wait.sh`: start the Toolshop application in Docker inside each job.
+- The CI section of the README.
+
+## Checks before trusting it
+
+| Check | Result |
+|---|---|
+| The suite with CI settings, locally (`CI=1`, 1 worker) | 8 passed in 37.5 s |
+| Shards + merge + summary, simulated locally | 4 blob reports merged into one HTML/JUnit/JSON report; summary correct |
+| **Red run:** I changed the expected login error to `'Wrong password'` | The summary named `tests/login.spec.ts:19`, showed `Expected: "Wrong password"` / `Received: "Invalid email or password"`; both attempts kept a trace, video and screenshot. Change reverted. |
+| Action versions | Checked against the actual latest releases (`checkout@v7`, `setup-node@v7`, `cache@v6`, `upload-artifact@v7`, `download-artifact@v8`), not written from memory |
+
+## What went wrong, and how it was fixed
+
+| # | Problem | How it was found | Decision |
+|---|---|---|---|
+| 1 | **The plan assumed CI could test the public site.** First CI run: 5 of 8 tests red, although all were green locally. | The `test-failed-1.png` screenshots in the artefacts: a Cloudflare "Verify you are human" page. GitHub's datacenter IPs get a bot check after a few requests. | Not worked around: bypassing bot protection is not acceptable, and it would be fragile anyway. CI now starts its own copy of the open-source Toolshop in Docker, pinned to a commit, and points `BASE_URL`/`API_URL` at it. The tests themselves did not change. |
+| 2 | The AI first suspected the pinned upstream commit was **newer than the public site** (the header looked different in the failure snapshot). | The AI checked before acting on it: it read the public site's footer, `v2.5 \| Built 2026-10-11`, the same date as the pinned commit. The hypothesis was wrong. | Kept the pin; looked for the real cause instead. |
+| 3 | Self-hosted API answered **500** on `/products`; the header did not show the signed-in user. | The trace of the API call contained Laravel's error page: `tempnam(): file created in the system's temporary directory`. | The API code is bind-mounted from the checkout, owned by the runner user, while PHP runs as `www-data`. `toolshop-start.sh` makes `storage/` and `bootstrap/cache` writable. Next run: all green. |
+| 4 | **Branch name `claude/sis3-ci-pipeline-dfdd1e`.** | My correction (Prompt 8): the prefix and the random suffix came from the tool's worktree default and mean nothing in this repository. | Renamed to `sis3-ci-pipeline`; the old remote branch was deleted. |
+| 5 | **The AI went silent for minutes** while waiting for CI. | My question "почему ты застрял?" (Prompt 8). | Long CI waits now run in the background with a short status line. |
+| 6 | The first draft of the README argued that flaky tests come from the public site's database resets. | After point 1, CI no longer touches the public site, so that argument was out of date. | The gating section was rewritten around the pinned, freshly seeded application (see README). |
+
+## Decisions proposed by the AI (to be checked and confirmed by me)
+
+- **GitHub Actions** over GitLab/Jenkins: the grader forks on GitHub, so nothing extra has to run.
+- **What blocks and what only reports** (README, "What blocks a merge"): type errors, a test that fails twice, `test.only` and an application that does not start block; flaky tests, the report merge job and known application bugs only report.
+- **One retry, not two:** enough for a one-off hiccup; more retries would make a real failure slower to report.
+- **Being honest about sharding:** most of the job time is starting Toolshop, not running tests, and the README says so with the measured numbers.

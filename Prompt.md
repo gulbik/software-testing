@@ -255,3 +255,67 @@ you can use faker for the data
 m8 login with the new password welcome02 to check
 ~~~~
 
+
+---
+
+# SIS 3: CI pipeline
+
+**Tool:** Claude Code (desktop app), **model:** Claude Opus 5.5 (`claude-opus-5-5`). The AI worked in a separate git worktree, ran the suite locally, pushed branches and read the GitHub Actions results with the `gh` CLI. It asked before the first push.
+
+## Prompt 6: the assignment
+
+~~~~text
+что надо сделать в sis3
+
+* Add a working CI pipeline to your SIS 2 repository.
+* 1.  Runs automatically on every push and every pull request.
+* 2.  Installs dependencies with caching, installs browsers, runs the full Playwright suite.
+* 3.  Publishes the HTML report and traces as artefacts, retained at least seven days.
+* 4.  Uses CI-specific configuration: forbidOnly, retries, a JUnit reporter.
+* 5.  Demonstrates parallelism — sharding or multiple jobs — and your README states the runtime before and after.
+* 6.  A status badge in the README, showing the current state of the main branch.
+* GitHub Actions by default. GitLab CI or Jenkins in Docker accepted — say which and why in the README.
+
+How SIS 3 is graded
+IT RUNS
+I fork your repository and the pipeline goes green without me changing anything.
+Hard-coded paths, missing secrets or a suite that needs your laptop score zero here.
+
+IT IS USEFUL WHEN RED
+I will break one of your tests and push.
+From the artefacts alone I must be able to say which test failed and why.
+No artefacts, no marks.
+
+IT IS REASONED
+The README explains what blocks a merge and what only reports — and why you drew the line there.
+A pipeline that gates everything is as wrong as one that gates nothing, and I want your argument.
+
+Plus the AI appendix — Level 1, prompts and corrections attached, as always.
+
+тщательно изучи проект и задание ты сможешь это сделать?
+sis 2 это мой код
+~~~~
+
+## Prompt 7: permission to push (answer to the AI's question)
+
+The AI asked whether it may push the branch to GitHub to measure the real CI runtime before and after sharding (`main` untouched). Answer: **"Да, пушь ветку"** (yes, push the branch).
+
+## Prompt 8: corrections during the work
+
+~~~~text
+почему ты застрял?
+~~~~
+
+(The AI was silently blocked on `gh run watch`, which prints nothing until a ~5-minute CI run ends. After this, long waits ran in the background with a one-line status message.)
+
+~~~~text
+зачем называть так ветку claude/sis3-ci-pipeline-dfdd1e зачем тут claude вообще; можно переименовать?
+~~~~
+
+~~~~text
+Да, sis3-ci-pipeline
+~~~~
+
+~~~~text
+Да, доделай
+~~~~
