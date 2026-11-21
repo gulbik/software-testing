@@ -1,0 +1,163 @@
+name: Playwright Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: 'Number of shards (1 = the unsharded baseline used for the runtime comparison in the README)'
+        type: choice
+        options: ['4', '1']
+        default: '4'
+
+# A newer push to the same branch/PR cancels the run that is now out of date.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Read-only token, no secrets: the workflow runs unchanged in a fork.
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 22
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # --ignore-scripts skips the postinstall browser download: tsc does not need a browser.
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+
+  test:
+    name: Tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # Let every shard finish, so one red shard does not hide results from the others.
+      fail-fast: false
+      matrix:
+        shardIndex: ${{ fromJSON(inputs.shards == '1' && '[1]' || '[1, 2, 3, 4]') }}
+        shardTotal: ${{ fromJSON(inputs.shards == '1' && '[1]' || '[4]') }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm # caches ~/.npm, keyed on package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts # browsers are installed (and cached) below
+
+      - name: Read Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: browser-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
+
+      - name: Install Chromium and its system dependencies
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install system dependencies only (browser restored from cache)
+        if: steps.browser-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Run Playwright tests
+        run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+
+      # Raw material for the merged report below.
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: blob-report-${{ matrix.shardIndex }}
+          path: blob-report
+          retention-days: 7
+
+      # Per-shard evidence that is useful on its own: this shard's HTML report, JUnit XML,
+      # and the raw trace.zip / screenshots / video of every failed attempt.
+      - name: Upload shard results (traces, screenshots, JUnit)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: shard-${{ matrix.shardIndex }}-results
+          path: |
+            test-results/
+            reports/
+            playwright-report/
+          retention-days: 14
+
+  report:
+    name: Merge reports
+    needs: test
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+
+      - name: Download blob reports from all shards
+        uses: actions/download-artifact@v8
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      - name: Merge into one HTML, JUnit and JSON report
+        run: npx playwright merge-reports --config merge.config.ts ./all-blob-reports
+
+      - name: Write job summary (which test failed and why)
+        if: ${{ always() }}
+        run: node scripts/ci-summary.mjs reports/results.json
+
+      - name: Upload HTML report (open index.html; includes traces)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 14
+
+      - name: Upload JUnit report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-report
+          path: reports/junit.xml
+          retention-days: 14
+
+  # The single check to mark as "required" in branch protection: it is green only when the
+  # typecheck and every shard passed. The report job is deliberately not part of it.
+  gate:
+    name: CI gate
+    needs: [typecheck, test]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail unless typecheck and all test shards succeeded
+        run: |
+          echo "typecheck: ${{ needs.typecheck.result }}"
+          echo "test:      ${{ needs.test.result }}"
+          test "${{ needs.typecheck.result }}" = "success"
+          test "${{ needs.test.result }}" = "success"
