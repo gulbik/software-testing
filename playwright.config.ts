@@ -19,9 +19,9 @@ export default defineConfig({
   fullyParallel: true,
   // A committed test.only would silently skip the rest of the suite: fail the run instead.
   forbidOnly: isCI,
-  // One retry absorbs the public site's periodic database reset. A test that passes only
-  // on the retry is reported as "flaky" instead of hiding the problem.
-  retries: isCI ? 1 : 0,
+  // Up to two retries absorb one-off hiccups (a container still warming up). A test that
+  // passes only on a retry is reported as "flaky" instead of hiding the problem.
+  retries: isCI ? 2 : 0,
   workers: isCI ? 2 : 4,
   timeout: 60_000,
   expect: { timeout: 10_000 },

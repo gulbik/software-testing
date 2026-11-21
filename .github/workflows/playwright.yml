@@ -127,7 +127,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: shard-${{ matrix.shardIndex }}-results
+          name: test-results-${{ matrix.shardIndex }}
           path: |
             test-results/
             reports/
