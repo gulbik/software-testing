@@ -1,0 +1,120 @@
+name: Playwright Tests
+
+on:
+  push: # every push to every branch
+  pull_request: # every PR
+  workflow_dispatch: # manual runs for timing
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3, 4]
+        shardTotal: [4]
+    env:
+      # The public site blocks GitHub runners with a Cloudflare bot check,
+      # so the tests run against a copy of the same open-source app in Docker.
+      BASE_URL: http://localhost:4200
+      API_URL: http://localhost:8091
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check out Toolshop (the application under test)
+        uses: actions/checkout@v7
+        with:
+          repository: testsmith-io/practice-software-testing
+          ref: ae7caecb811dd8952c09d997e69be7cb946ecd44 # the version the public site runs
+          path: toolshop
+          persist-credentials: false
+
+      - name: Start Toolshop in Docker
+        working-directory: toolshop
+        run: ../scripts/toolshop-start.sh
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm # caches ~/.npm keyed on package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Wait for Toolshop to be ready
+        working-directory: toolshop
+        run: ../scripts/toolshop-wait.sh
+
+      - name: Run Playwright tests
+        run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+
+      - name: Save Toolshop logs
+        if: ${{ failure() }}
+        working-directory: toolshop
+        run: mkdir -p ../test-results && SPRINT=sprint5 docker compose -f docker-compose.yml logs --no-color > ../test-results/toolshop-docker.log 2>&1 || true
+
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: blob-report-${{ matrix.shardIndex }}
+          path: blob-report
+          retention-days: 1 # intermediate file
+
+      - name: Upload traces and JUnit
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.shardIndex }}
+          path: |
+            test-results/
+            reports/
+          retention-days: 14
+
+  merge-reports:
+    name: Merge reports
+    if: ${{ !cancelled() }}
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Download blob reports
+        uses: actions/download-artifact@v8
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      - name: Merge into HTML + JUnit
+        run: npx playwright merge-reports --config merge.config.ts ./all-blob-reports
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 14
+
+      - name: Upload merged JUnit
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-report
+          path: reports/junit-merged.xml
+          retention-days: 14

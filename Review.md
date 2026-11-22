@@ -171,3 +171,23 @@ This is an application business rule, not a flaky test. I therefore excluded the
 ### `page.waitForResponse` in `AddressForm`
 
 This is used to wait for the actual postcode lookup response rather than a fixed delay. The lookup changes the street, city and state fields, so the test waits for the real response and then uses web-first assertions on the fields.
+
+---
+
+# SIS 3: Review of the AI-generated CI pipeline
+
+The initial workflow did not upload reports when tests failed. I added if: always() to ensure reports and traces would still be available, and set artifact retention to 7 days.
+
+AI also suggested enabling forbidOnly and retries for all environments. I changed these settings to apply only in CI, so local debugging would not be affected.
+
+For parallel execution, AI suggested running tests in two shards, but each shard produced a separate report. I configured blob reports and added a step to merge them into a single HTML report.
+
+I also checked that failed tests would cause the pipeline to fail rather than being hidden by retries or reporting steps.
+
+The first CI run failed 5 out of 8 tests, although they passed locally. The screenshots showed that Cloudflare was blocking requests from GitHub Actions. Instead of bypassing the protection, we configured CI to run a pinned version of Toolshop locally in Docker without changing the tests.
+
+AI initially suspected a version mismatch between the public site and the pinned commit. After checking the site's version, this assumption turned out to be incorrect.
+
+The Docker setup also caused API errors because PHP could not write to the required directories. We fixed the permissions for storage/ and bootstrap/cache, after which all tests passed.
+
+I also corrected several issues in the AI workflow. It waited silently during long CI runs, used an unnecessarily generated branch name, and left outdated explanations about flaky tests in the README. These were adjusted.
