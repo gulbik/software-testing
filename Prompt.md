@@ -255,3 +255,101 @@ you can use faker for the data
 m8 login with the new password welcome02 to check
 ~~~~
 
+
+---
+
+# SIS 3: CI pipeline
+## Prompt 6: the assignment
+
+~~~~text
+# SIS 3 — CI Pipeline Implementation
+
+You are a senior QA Automation and DevOps engineer experienced with Playwright, TypeScript, and GitHub Actions.
+
+I have an existing SIS 2 Playwright testing project. My task is to extend it for SIS 3 by implementing a reliable CI pipeline.
+
+## Context
+
+The repository already contains Playwright tests developed for SIS 2. The existing test functionality must be preserved.
+
+## Assignment Requirements
+
+1. Run the CI pipeline automatically on every push and pull request.
+2. Install dependencies with caching and install the required Playwright browsers.
+3. Execute the complete Playwright test suite.
+4. Publish HTML reports and traces as downloadable artifacts, retained for at least 7 days.
+5. Configure CI-specific settings: `forbidOnly`, retries, and a JUnit reporter.
+6. Demonstrate parallel execution using sharding or multiple jobs, and compare execution times before and after parallelization.
+7. Add a GitHub Actions status badge for the main branch.
+8. Document which checks block merging and which are informational, with justification.
+9. Ensure the pipeline works when the instructor forks the repository without requiring secrets or machine-specific configuration.
+
+## Instructions
+
+### Phase 1 — Repository Audit
+
+Before modifying any files:
+
+- Examine the repository structure.
+- Review `package.json`, the Playwright configuration, test files, and existing scripts.
+- Identify environment variables, hard-coded paths, external dependencies, and potential CI failures.
+- Check whether tests can run independently and in parallel.
+- Identify any tests that may be flaky or dependent on shared state.
+
+Provide a short audit report and a proposed implementation plan.
+
+**Do not modify any files until the audit is complete.**
+
+### Phase 2 — Implementation
+
+After the audit:
+
+- Implement GitHub Actions CI.
+- Use dependency caching.
+- Install the required Playwright browsers.
+- Configure CI-specific Playwright settings without unnecessarily changing local development behavior.
+- Implement parallel execution and report aggregation.
+- Upload diagnostic artifacts even when tests fail.
+- Ensure test failures correctly affect the workflow status.
+- Avoid hard-coded credentials, local paths, and repository-specific secrets.
+
+Keep changes minimal and explain any modifications to existing tests.
+
+### Phase 3 — Verification
+
+Verify that:
+
+- The pipeline runs on push and pull requests.
+- All tests are executed.
+- The pipeline fails when a test fails.
+- HTML reports, JUnit results, and traces are available for debugging.
+- Artifacts are retained for at least 7 days.
+- Parallel execution works.
+- A fresh fork can run the workflow without manual configuration.
+
+Do not claim a verification has passed unless it has actually been executed.
+
+### Phase 4 — Documentation
+
+Update the README with:
+
+- CI architecture and workflow explanation.
+- GitHub Actions status badge.
+- Local and CI execution instructions.
+- Before/after runtime measurements.
+- Artifact download instructions.
+- Merge-blocking versus informational checks, with reasoning.
+- Any limitations or known issues.
+
+## Constraints
+
+- Preserve existing SIS 2 test behavior.
+- Do not invent benchmark results.
+- Do not silently skip failing tests.
+- Do not weaken assertions to make CI green.
+- Do not introduce unnecessary dependencies.
+- Explain any changes that affect test coverage or reliability.
+
+Start with Phase 1 only. Wait for my approval before implementing changes.
+~~~~
+
